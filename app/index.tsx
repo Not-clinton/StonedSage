@@ -22,6 +22,7 @@ export default function ChatScreen() {
   const maxChars = 500; 
 
   const handleIconPress = () => {
+    Keyboard.dismiss(); 
     setSidebarVisible(true);
   };
   

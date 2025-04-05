@@ -77,6 +77,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     zIndex: 1000,
+    elevation: 4, 
   },
   sidebar: {
     position: 'absolute',
@@ -87,6 +88,7 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 60,
     zIndex: 1001,
+    elevation: 5, 
   },
   searchContainer: {
     flexDirection: 'row',

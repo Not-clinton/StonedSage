@@ -29,7 +29,7 @@ export default function WelcomeAnimation() {
 
   const eclipseScale = animatedValue.interpolate({
     inputRange: [0, 1],
-    outputRange: [1.2, 3.5], // Increased initial and final size
+    outputRange: [1.2, 3.5], 
   });
 
   const eclipsePosition = animatedValue.interpolate({
@@ -63,7 +63,7 @@ export default function WelcomeAnimation() {
 
       {showWelcomeText && (
         <View style={styles.welcomeContainer}>
-          <Text style={styles.welcomeText}>Welcome</Text>
+          <Text style={styles.welcomeText}>Your AI-Powered Financial Therapist "Your Coin, Your Kingdom"</Text>
         </View>
       )}
     </View>
