@@ -1,77 +1,164 @@
-import { Text, View, StyleSheet, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, SafeAreaView, StatusBar, Image, Keyboard, ScrollView } from 'react-native';
+// index.tsx
+import React, { useEffect, useState } from 'react';
+import {
+  Text,
+  View,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  StatusBar,
+  Keyboard,
+  ScrollView,
+  ActivityIndicator
+} from 'react-native';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
 import { FontAwesome5 } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import Personalities from './components/Personalities';
 import { useChatStore } from './store/chatStore';
 import ChatMessage from './components/ChatMessage';
 
+const BACKEND_URL = 'https://financial-advisor-bot.deno.dev';
+
+const personalityEmojis: Record<string, string> = {
+  littlefinger: '🗡️',
+  mac: '🌿',
+  lawyer: '⚖️',
+  businessman: '🚀',
+};
+
 export default function ChatScreen() {
   const {
     messages,
     currentMessage,
     isSidebarVisible,
+    selectedPersonality,
+    extractedContext,
     setCurrentMessage,
     setSidebarVisible,
-    addMessage
+    addMessage,
+    setExtractedContext,
+    setSelectedPersonality
   } = useChatStore();
 
-  const router = useRouter();
-  const [message, setMessage] = useState('');
-  const maxChars = 500; 
+  const [loading, setLoading] = useState(false);
+  const [initialMessageSent, setInitialMessageSent] = useState(false);
+  const maxChars = 500;
+
+  // Send initial AI message once persona is selected
+  useEffect(() => {
+    if (selectedPersonality && !initialMessageSent) {
+      const intro = `Hello! I'm your ${selectedPersonality} ${personalityEmojis[selectedPersonality]}. I'm here to help you with your financial journey. What would you like to discuss?`;
+      addMessage(intro, 'sage');
+      setInitialMessageSent(true);
+    }
+  }, [selectedPersonality]);
 
   const handleIconPress = () => {
-    Keyboard.dismiss(); 
+    Keyboard.dismiss();
     setSidebarVisible(true);
   };
-  
+
   const handleCloseSidebar = () => {
     setSidebarVisible(false);
   };
-  
+
   const handleFilePicker = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: '*/*', // All file types
+        type: 'application/pdf',
         copyToCacheDirectory: true
       });
-      
+
       if (!result.canceled) {
         const file = result.assets[0];
-        console.log('File selected:', file.name);
+        const formData = new FormData();
+        formData.append('file', {
+          uri: file.uri,
+          name: file.name,
+          type: 'application/pdf'
+        } as any);
+
+        const res = await fetch(
+          `${BACKEND_URL}/api/upload?personality=${selectedPersonality}`,
+          {
+            method: 'POST',
+            body: formData
+          }
+        );
+        const data = await res.json();
+        if (res.ok && data.response) {
+          setExtractedContext(data.response);
+          addMessage(
+            '✅ Financial context uploaded. Let\'s continue.',
+            'sage'
+          );
+        } else {
+          throw new Error(data.error || 'Upload failed');
+        }
       }
     } catch (error) {
-      console.log('Error picking document:', error);
+      console.error('Upload error:', error);
+      addMessage('❌ Failed to upload document. Please try again.', 'sage');
     }
   };
 
-  const handleSend = () => {
-    if (currentMessage.trim()) {
-      addMessage(currentMessage.trim(), 'user');
-      setCurrentMessage('');
-      // Simulate sage response
-      setTimeout(() => {
-        addMessage('This is a sample response', 'sage');
-      }, 1000);
+  const handleSend = async () => {
+    if (!currentMessage.trim()) return;
+    addMessage(currentMessage.trim(), 'user');
+    setCurrentMessage('');
+    setLoading(true);
+
+    try {
+      const body = {
+        messages: messages.map(m => ({
+          role: m.sender === 'user' ? 'user' : 'assistant',
+          content: m.text
+        })).concat({
+          role: 'user',
+          content: currentMessage.trim()
+        }),
+        context: extractedContext || undefined
+      };
+
+      const res = await fetch(
+        `${BACKEND_URL}/api/chat?personality=${selectedPersonality}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        }
+      );
+      const data = await res.json();
+      if (res.ok && data.response) {
+        addMessage(data.response, 'sage');
+      } else {
+        throw new Error(data.error || 'Chat failed');
+      }
+    } catch (error) {
+      console.error('Chat error:', error);
+      addMessage('❌ An error occurred. Please try again.', 'sage');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const dismissKeyboard = () => {
-    Keyboard.dismiss();
-  };
-  
+  const dismissKeyboard = () => Keyboard.dismiss();
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      
-      <Personalities 
-        isVisible={isSidebarVisible} 
+
+      <Personalities
+        isVisible={isSidebarVisible}
         onClose={handleCloseSidebar}
       />
-      
-      <TouchableOpacity 
-        activeOpacity={1} 
+
+      <TouchableOpacity
+        activeOpacity={1}
         style={styles.dismissContainer}
         onPress={dismissKeyboard}
       >
@@ -82,39 +169,57 @@ export default function ChatScreen() {
               <FontAwesome5 name="dungeon" size={24} color="#8B4513" />
             </View>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Stoned Sage</Text>
+          <Text style={styles.headerTitle}>
+            {selectedPersonality
+              ? 'Stoned Sage'
+              : 'Select Your Sage'}
+          </Text>
           <View style={styles.spacer} />
         </View>
-        
-        {/* Chat Container */}
+
+        {/* Chat History */}
         <View style={styles.chatContainer}>
-          <ScrollView style={styles.chatHistory}>
-            {messages.map((message) => (
+          <ScrollView 
+            style={styles.chatHistory}
+            contentContainerStyle={styles.chatContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {messages.map(msg => (
               <ChatMessage
-                key={message.id}
-                text={message.text}
-                sender={message.sender}
+                key={msg.id}
+                text={msg.text}
+                sender={msg.sender}
+                personalityEmoji={msg.sender === 'sage' ? personalityEmojis[selectedPersonality] : undefined}
               />
             ))}
+            {loading && (
+              <ActivityIndicator
+                style={{ margin: 10 }}
+                size="small"
+                color="#8B4513"
+              />
+            )}
           </ScrollView>
         </View>
       </TouchableOpacity>
 
-      <KeyboardAvoidingView 
+      {/* Input */}
+      <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.inputContainer}
       >
         <View style={styles.messageInputContainer}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.attachButton}
             onPress={handleFilePicker}
           >
             <FontAwesome5 name="paperclip" size={20} color="#666" />
           </TouchableOpacity>
-          
+
           <TextInput
             style={styles.input}
-            placeholder="MESSAGE STONED SAGE..."
+            placeholder="MESSAGE YOUR SAGE..."
             placeholderTextColor="#666"
             value={currentMessage}
             onChangeText={setCurrentMessage}
@@ -122,13 +227,21 @@ export default function ChatScreen() {
             maxLength={maxChars}
             blurOnSubmit={false}
           />
-          
-          <TouchableOpacity 
-            style={[styles.sendButton, !currentMessage.trim() && styles.sendButtonDisabled]}
+
+          <TouchableOpacity
+            style={[
+              styles.sendButton,
+              (!currentMessage.trim() || loading) &&
+                styles.sendButtonDisabled
+            ]}
             onPress={handleSend}
-            disabled={!currentMessage.trim()}
+            disabled={!currentMessage.trim() || loading}
           >
-            <FontAwesome5 name="paper-plane" size={20} color={currentMessage.trim() ? '#9A5D21' : '#ccc'} />
+            <FontAwesome5
+              name="paper-plane"
+              size={20}
+              color={currentMessage.trim() ? '#9A5D21' : '#ccc'}
+            />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -147,8 +260,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 15,
     paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: 'transparent',
     marginTop: 20,
   },
   iconButton: {
@@ -167,9 +278,14 @@ const styles = StyleSheet.create({
   },
   chatContainer: {
     flex: 1,
+    marginBottom: 20,
   },
   chatHistory: {
     flex: 1,
+  },
+  chatContent: {
+    paddingBottom: 20,
+    paddingTop: 10,
   },
   inputContainer: {
     width: '100%',

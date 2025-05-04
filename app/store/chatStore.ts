@@ -1,41 +1,70 @@
+// chatStore.ts
 import { create } from 'zustand';
 
-interface Message {
+export type Message = {
   id: string;
   text: string;
   sender: 'user' | 'sage';
-  timestamp: Date;
-}
+};
 
 interface ChatState {
   messages: Message[];
   currentMessage: string;
   isSidebarVisible: boolean;
-  selectedPersonality: string | null;
-  addMessage: (text: string, sender: 'user' | 'sage') => void;
-  setCurrentMessage: (message: string) => void;
+  selectedPersonality: 'littlefinger' | 'mac' | 'lawyer' | 'businessman' | '';
+  extractedContext: string;
+  // actions
+  setCurrentMessage: (msg: string) => void;
   setSidebarVisible: (visible: boolean) => void;
-  setSelectedPersonality: (personality: string) => void;
+  setSelectedPersonality: (p: ChatState['selectedPersonality']) => void;
+  setExtractedContext: (ctx: string) => void;
+  addMessage: (text: string, sender: 'user' | 'sage') => void;
+  resetChat: () => void;
 }
 
-export const useChatStore = create<ChatState>((set) => ({
+export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   currentMessage: '',
   isSidebarVisible: false,
-  selectedPersonality: null,
-  addMessage: (text, sender) =>
-    set((state) => ({
-      messages: [
-        ...state.messages,
-        {
-          id: Date.now().toString(),
-          text,
-          sender,
-          timestamp: new Date(),
-        },
-      ],
-    })),
-  setCurrentMessage: (message) => set({ currentMessage: message }),
-  setSidebarVisible: (visible) => set({ isSidebarVisible: visible }),
-  setSelectedPersonality: (personality) => set({ selectedPersonality: personality }),
+  selectedPersonality: '',
+  extractedContext: '',
+  
+  setCurrentMessage: (msg: string) => set({ currentMessage: msg }),
+  setSidebarVisible: (visible: boolean) => set({ isSidebarVisible: visible }),
+  setSelectedPersonality: (p) => {
+    set({ selectedPersonality: p });
+    // reset everything when persona changes
+    get().resetChat();
+    set({ selectedPersonality: p });
+
+    // Add greeting message based on selected personality
+    const greetings = {
+      littlefinger: "Ah, a new player in the game of coins. Let's discuss how to make your wealth grow, shall we?",
+      mac: "Yo, what's good? Let's talk about growing that green, both in your garden and your bank account.",
+      lawyer: "Counselor at your service. Let's draft a strategy for your financial future.",
+      businessman: "Time to engineer your financial success. What's your vision for wealth?"
+    };
+
+    if (p && greetings[p]) {
+      get().addMessage(greetings[p], 'sage');
+    }
+  },
+  setExtractedContext: (ctx: string) => set({ extractedContext: ctx }),
+
+  addMessage: (text: string, sender: 'user' | 'sage') => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    set((state: ChatState) => ({
+      messages: [...state.messages, { id, text, sender }]
+    }));
+  },
+
+  resetChat: () => {
+    set({
+      messages: [],
+      currentMessage: '',
+      extractedContext: ''
+    });
+  }
 }));
+
+export default useChatStore;
